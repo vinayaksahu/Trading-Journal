@@ -5379,9 +5379,9 @@ function renderCalendarHeatmap(){
     }
   });
   
-  // 5. Month PNL summary
+  // 5. Month PNL summary (filtered by active account)
   const monthPnls = {};
-  trades.forEach(t => {
+  trades.filter(t => (t.account || 'Live') === currentAccount).forEach(t => {
     if(!t.date) return;
     const mk = t.date.substring(0, 7);
     monthPnls[mk] = (monthPnls[mk] || 0) + (t.pnl || 0);
