@@ -5328,9 +5328,9 @@ function renderCalendarHeatmap(){
   const container = $('calendar-heatmap');
   if(!container) return;
   
-  // 1. Aggregate daily stats
+  // 1. Aggregate daily stats (filtered by active account)
   const dailyStats = {};
-  trades.forEach(t => {
+  trades.filter(t => (t.account || 'Live') === currentAccount).forEach(t => {
     if(!t.date) return;
     if(!dailyStats[t.date]) dailyStats[t.date] = { pnl: 0, count: 0 };
     dailyStats[t.date].pnl += (t.pnl || 0);
