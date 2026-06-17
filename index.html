@@ -9,9 +9,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <style>
 /* ═══════════════════════════════════════════════════════════
    ROOT VARIABLES & THEMES
@@ -38,8 +35,8 @@
   --purple-bg:rgba(139,92,246,.1);--orange-bg:rgba(249,115,22,.1);
 }
 [data-theme="light"]{
-  --bg-base:#F4F6FB;--bg-surface:#EAECF4;--bg-card:#FFFFFF;
-  --bg-elevated:#F8F9FC;--bg-hover:#EEF0F8;--bg-input:#FFFFFF;
+  --bg-base:#E6EAF3;--bg-surface:#DBDFEC;--bg-card:#F7F9FC;
+  --bg-elevated:#EDEFF6;--bg-hover:#E1E5F1;--bg-input:#FFFFFF;
   --border:rgba(0,0,0,.07);--border-bright:rgba(0,0,0,.13);
   --text-primary:#0F1320;--text-secondary:#2F3542;--text-muted:#626B82;
   --glass-bg:rgba(255,255,255,.8);--glass-border:rgba(0,0,0,.08);
@@ -301,9 +298,10 @@ tbody tr:hover td{background:var(--bg-hover)}
     gap: 6px!important;
   }
   .header-badge {
-    font-size: 11.5px!important;
-    padding: 5px 8px!important;
-    white-space: nowrap!important;
+    display: none!important;
+  }
+  .tour-trigger-btn {
+    display: none!important;
   }
   #header-account-select {
     padding: 5px 8px!important;
@@ -314,6 +312,7 @@ tbody tr:hover td{background:var(--bg-hover)}
     width: 32px!important;
     height: 32px!important;
     font-size: 14px!important;
+    display: flex!important;
   }
   .logo-text {
     font-size: 15px!important;
@@ -921,7 +920,7 @@ tbody tr:hover td{background:var(--bg-hover)}
 <header class="header">
   <div class="header-left">
     <button id="menuToggle">☰</button>
-    <div class="logo"><div class="logo-icon">📈</div><div><div class="logo-text">FX Journal</div><div class="logo-sub">XAUUSD · SMC · ICT</div></div></div>
+    <div class="logo"><div class="logo-icon">📈</div><div><div class="logo-text">FX Journal</div><div class="logo-sub">SMC · ICT · Liquidity</div></div></div>
   </div>
   <div class="header-right">
     <div class="news-warn-banner" id="newsWarnGlobal">⚠️ High Impact News Soon</div>
@@ -950,7 +949,6 @@ tbody tr:hover td{background:var(--bg-hover)}
   <button class="nav-btn" data-tab="risk"><span class="nav-icon">🛡️</span>Risk Manager</button>
   <div class="nav-label">System</div>
   <button class="nav-btn" data-tab="settings"><span class="nav-icon">⚙️</span>Settings</button>
-  <button class="nav-btn" data-tab="cloud"><span class="nav-icon">☁️</span>Cloud Sync</button>
   <button class="nav-btn" data-tab="guide"><span class="nav-icon">📖</span>User Guide</button>
 </nav>
 
@@ -1693,75 +1691,7 @@ tbody tr:hover td{background:var(--bg-hover)}
   </div>
 </div>
 
-<!-- ══════════ CLOUD SYNC ══════════ -->
-<div class="section" id="tab-cloud">
-  <div class="section-title"><span class="st-icon">☁️</span>Cloud Sync & User Management</div>
-  
-  <div class="g2">
-    <!-- Firebase Configuration Override Card -->
-    <div class="card">
-      <div class="card-title"><span class="ct-icon">⚙️</span>Firebase Project Setup</div>
-      <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:12px">
-        By default, the journal runs locally in your browser. To publish this website and enable cloud sync (or use a private database), paste your Firebase Configuration Web App keys below.
-      </p>
-      <div class="field">
-        <div class="field-label">Firebase Config JSON</div>
-        <textarea id="firebase-config-input" placeholder='{
-  "apiKey": "YOUR_API_KEY",
-  "authDomain": "YOUR_PROJECT_ID.firebaseapp.com",
-  "projectId": "YOUR_PROJECT_ID",
-  "storageBucket": "YOUR_PROJECT_ID.appspot.com",
-  "messagingSenderId": "YOUR_SENDER_ID",
-  "appId": "YOUR_APP_ID"
-}' style="font-family:var(--font-mono);font-size:12.5px;min-height:160px;width:100%"></textarea>
-      </div>
-      <button type="button" class="btn-primary" onclick="saveCustomFirebaseConfig()" style="margin-top:6px">💾 Save Config & Connect</button>
-      <div id="firebase-connection-status" style="margin-top:10px;font-size:12.5px;font-weight:600"></div>
-    </div>
 
-    <!-- Auth Management Card -->
-    <div class="card" id="cloud-auth-card">
-      <!-- Authenticated View (Hidden by default) -->
-      <div id="auth-profile-view" style="display:none">
-        <div class="card-title"><span class="ct-icon">👤</span>User Account</div>
-        <div class="metric" style="margin-bottom:12px">
-          <div class="metric-label">Logged In As</div>
-          <div class="metric-value blue" id="user-email-display" style="font-size:16px;word-break:break-all">—</div>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <button type="button" class="btn-primary" onclick="syncFromFirebase()" style="flex:1">🔄 Sync Data</button>
-          <button type="button" class="btn-danger" onclick="firebaseSignOut()" style="flex:1">🚪 Sign Out</button>
-        </div>
-        <p style="font-size:11.5px;color:var(--text-muted);margin-top:12px;text-align:center">
-          ✨ Your trades, settings, templates, goals and daily journals will auto-sync on save.
-        </p>
-      </div>
-
-      <!-- Non-Authenticated View -->
-      <div id="auth-login-view">
-        <div class="card-title"><span class="ct-icon">🔑</span>Access Your Account</div>
-        <div class="pill-group" style="gap:6px;margin-bottom:16px">
-          <button class="pill active" id="btn-show-login" onclick="toggleAuthForm('login')">Sign In</button>
-          <button class="pill" id="btn-show-signup" onclick="toggleAuthForm('signup')">Sign Up</button>
-        </div>
-        
-        <div id="auth-form-fields">
-          <div class="field">
-            <div class="field-label">Email Address</div>
-            <input type="text" id="auth-email" placeholder="you@example.com">
-          </div>
-          <div class="field">
-            <div class="field-label">Password</div>
-            <input type="password" id="auth-password" placeholder="••••••••">
-          </div>
-          <button type="button" class="btn-primary" id="btn-auth-submit" onclick="handleAuthSubmit()" style="margin-top:8px">🚪 Sign In</button>
-        </div>
-        
-        <div id="auth-message" style="margin-top:12px;font-size:12.5px;text-align:center;font-weight:600"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ══════════ DAILY JOURNAL ══════════ -->
 <div class="section" id="tab-dailyjournal">
@@ -2003,22 +1933,7 @@ tbody tr:hover td{background:var(--bg-hover)}
 function $(id){return document.getElementById(id)}
 function $$(sel){return document.querySelectorAll(sel)}
 function safeGet(key,fb){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fb}catch(e){return fb}}
-function safeSet(key,val){
-  try{
-    localStorage.setItem(key,JSON.stringify(val));
-    if (firebaseInitialized && firebase.auth().currentUser) {
-      const uid = firebase.auth().currentUser.uid;
-      firebase.firestore().collection('users').doc(uid).collection('data').doc(key).set({
-        value: val,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }).catch(err => console.error("Firebase sync error for " + key + ":", err));
-    }
-    return true;
-  }catch(e){
-    toast('⚠️ Storage full!','error');
-    return false;
-  }
-}
+function safeSet(key,val){try{localStorage.setItem(key,JSON.stringify(val));return true}catch(e){toast('⚠️ Storage full!','error');return false}}
 function toast(msg,type='success'){const t=$('toast');t.textContent=msg;t.className='show '+type;clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
 function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function cleanText(raw){if(!raw)return'';return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2702}-\u{27B0}]|[\u{200D}]|[\u{FE0F}]|[\u{20E3}]|[\u{E0020}-\u{E007F}]|[\u{1F1E0}-\u{1F1FF}]|[▲▼✅❌⚖✓☰⚡️🔴🟡🟢]/gu,'').trim()}
@@ -2036,7 +1951,6 @@ let psyEntries=safeGet('fxj_psychology',[]);
 let newsEvents=safeGet('fxj_news',[]);
 let settings=safeGet('fxj_settings',{currency:'$',accType:'Live'});
 let editingIndex=-1;
-let firebaseInitialized = false;
 let currentScreenshot=null;
 let logSortKey='date';
 let logSortDir=-1;
@@ -2156,8 +2070,8 @@ const themes = {
     '--glass-bg': 'rgba(22,25,33,.75)', '--glass-border': 'rgba(255,255,255,.08)'
   },
   light: {
-    '--bg-base': '#F4F6FB', '--bg-surface': '#EAECF4', '--bg-card': '#FFFFFF',
-    '--bg-elevated': '#F8F9FC', '--bg-hover': '#EEF0F8', '--bg-input': '#FFFFFF',
+    '--bg-base': '#E6EAF3', '--bg-surface': '#DBDFEC', '--bg-card': '#F7F9FC',
+    '--bg-elevated': '#EDEFF6', '--bg-hover': '#E1E5F1', '--bg-input': '#FFFFFF',
     '--border': 'rgba(0,0,0,.07)', '--border-bright': 'rgba(0,0,0,.13)',
     '--text-primary': '#0F1320', '--text-secondary': '#2F3542', '--text-muted': '#626B82',
     '--glass-bg': 'rgba(255,255,255,.8)', '--glass-border': 'rgba(0,0,0,.08)'
@@ -6902,261 +6816,7 @@ renderTemplatesDropdown();
 renderDailyJournals();
 onSetupChanged();
 
-/* ═══════════════════════════════════════════════════════════
-   FIREBASE MULTI-USER SYNC ENGINE (Option A)
-   ═══════════════════════════════════════════════════════════ */
-const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
-};
 
-function initFirebase() {
-  let config = null;
-  const customConfigStr = localStorage.getItem('fxj_custom_firebase_config');
-  if (customConfigStr) {
-    try {
-      config = JSON.parse(customConfigStr);
-    } catch(e) {
-      console.error("Failed to parse custom Firebase config:", e);
-    }
-  }
-  
-  if (!config && DEFAULT_FIREBASE_CONFIG.apiKey) {
-    config = DEFAULT_FIREBASE_CONFIG;
-  }
-  
-  const statusEl = $('firebase-connection-status');
-  if (config && config.apiKey) {
-    try {
-      if (typeof firebase !== 'undefined') {
-        if (!firebase.apps.length) {
-          firebase.initializeApp(config);
-        }
-        firebaseInitialized = true;
-        
-        firebase.auth().onAuthStateChanged(user => {
-          updateCloudUI(user);
-        });
-        
-        if (statusEl) {
-          statusEl.innerHTML = '⚡ Connected to Firebase Project: <span class="green">' + config.projectId + '</span>';
-        }
-        const inputEl = $('firebase-config-input');
-        if (inputEl) {
-          inputEl.value = JSON.stringify(config, null, 2);
-        }
-      } else {
-        if (statusEl) statusEl.innerHTML = '❌ Firebase SDK script failed to load.';
-      }
-    } catch(e) {
-      console.error("Firebase init failed:", e);
-      if (statusEl) statusEl.innerHTML = '❌ Connection failed: ' + e.message;
-    }
-  } else {
-    if (statusEl) statusEl.innerHTML = 'ℹ️ Status: Local Offline Mode (No cloud database active)';
-  }
-}
-
-function saveCustomFirebaseConfig() {
-  const inputVal = $('firebase-config-input').value.trim();
-  if (!inputVal) {
-    localStorage.removeItem('fxj_custom_firebase_config');
-    toast('🗑️ Configuration cleared', 'info');
-    setTimeout(() => window.location.reload(), 800);
-    return;
-  }
-  
-  try {
-    const configObj = JSON.parse(inputVal);
-    if (!configObj.apiKey || !configObj.projectId) {
-      throw new Error("Missing apiKey or projectId");
-    }
-    localStorage.setItem('fxj_custom_firebase_config', JSON.stringify(configObj));
-    toast('💾 Config saved! Reloading...', 'success');
-    setTimeout(() => window.location.reload(), 1000);
-  } catch(e) {
-    toast('❌ Invalid JSON format or missing keys!', 'error');
-  }
-}
-
-let currentAuthForm = 'login';
-function toggleAuthForm(mode) {
-  currentAuthForm = mode;
-  const btnLogin = $('btn-show-login');
-  const btnSignup = $('btn-show-signup');
-  const btnSubmit = $('btn-auth-submit');
-  
-  if (mode === 'login') {
-    if (btnLogin) btnLogin.classList.add('active');
-    if (btnSignup) btnSignup.classList.remove('active');
-    if (btnSubmit) btnSubmit.textContent = '🚪 Sign In';
-  } else {
-    if (btnLogin) btnLogin.classList.remove('active');
-    if (btnSignup) btnSignup.classList.add('active');
-    if (btnSubmit) btnSubmit.textContent = '📝 Sign Up & Sync';
-  }
-  const msgEl = $('auth-message');
-  if (msgEl) msgEl.textContent = '';
-}
-
-async function handleAuthSubmit() {
-  if (!firebaseInitialized) {
-    toast('❌ Firebase is not initialized. Setup config first!', 'error');
-    return;
-  }
-  
-  const email = $('auth-email').value.trim();
-  const password = $('auth-password').value.trim();
-  const msgEl = $('auth-message');
-  
-  if (!email || !password) {
-    if (msgEl) msgEl.innerHTML = '<span class="red">Email and password are required.</span>';
-    return;
-  }
-  
-  if (msgEl) msgEl.innerHTML = '<span class="blue">Processing request...</span>';
-  
-  try {
-    if (currentAuthForm === 'login') {
-      await firebase.auth().signInWithEmailAndPassword(email, password);
-      toast('🚪 Signed in successfully!', 'success');
-    } else {
-      await firebase.auth().createUserWithEmailAndPassword(email, password);
-      toast('📝 Account created successfully!', 'success');
-    }
-    
-    $('auth-email').value = '';
-    $('auth-password').value = '';
-    
-    await syncFromFirebase();
-  } catch(err) {
-    console.error("Auth action failed:", err);
-    if (msgEl) msgEl.innerHTML = '<span class="red">Error: ' + err.message + '</span>';
-  }
-}
-
-async function firebaseSignOut() {
-  if (!firebaseInitialized) return;
-  if (!confirm('Log out? Your local browser copy will be cleared to protect privacy, but cloud data remains safe.')) {
-    return;
-  }
-  
-  try {
-    await firebase.auth().signOut();
-    const keysToClear = [
-      'fxj_v3', 'fxj_adjustments', 'fxj_settings', 'fxj_v10_playbooks', 
-      'fxj_v10_goals', 'fxj_v10_daily_journal', 'fxj_v10_templates', 
-      'fxj_psychology', 'fxj_news', 'fxj_v11_accounts', 
-      'fxj_v11_active_account', 'fxj_v11_lockout_active', 
-      'fxj_v11_strict_mode', 'fxj_pairs', 'fxj_setups'
-    ];
-    keysToClear.forEach(key => localStorage.removeItem(key));
-    toast('🚪 Signed out successfully', 'success');
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
-  } catch(err) {
-    console.error("Sign out failed:", err);
-    toast('❌ Sign out failed!', 'error');
-  }
-}
-
-function updateCloudUI(user) {
-  const profileView = $('auth-profile-view');
-  const loginView = $('auth-login-view');
-  
-  if (user) {
-    if (profileView) profileView.style.display = 'block';
-    if (loginView) loginView.style.display = 'none';
-    const emailDisp = $('user-email-display');
-    if (emailDisp) emailDisp.textContent = user.email;
-    
-    let userHeaderBadge = $('header-user-badge');
-    if (!userHeaderBadge) {
-      userHeaderBadge = document.createElement('span');
-      userHeaderBadge.id = 'header-user-badge';
-      userHeaderBadge.className = 'header-badge';
-      userHeaderBadge.style.background = 'rgba(59, 130, 246, 0.05)';
-      userHeaderBadge.style.color = 'var(--blue)';
-      userHeaderBadge.style.borderColor = 'rgba(59, 130, 246, 0.25)';
-      userHeaderBadge.style.cursor = 'pointer';
-      userHeaderBadge.onclick = () => switchTab('cloud');
-      const hr = document.querySelector('.header-right');
-      if (hr) {
-        const liveDateEl = hr.querySelector('#live-date');
-        if (liveDateEl) hr.insertBefore(userHeaderBadge, liveDateEl);
-        else hr.appendChild(userHeaderBadge);
-      }
-    }
-    userHeaderBadge.textContent = '👤 ' + user.email.split('@')[0];
-    userHeaderBadge.style.display = 'inline-block';
-  } else {
-    if (profileView) profileView.style.display = 'none';
-    if (loginView) loginView.style.display = 'block';
-    const userHeaderBadge = $('header-user-badge');
-    if (userHeaderBadge) {
-      userHeaderBadge.style.display = 'none';
-    }
-  }
-}
-
-async function syncFromFirebase() {
-  if (!firebaseInitialized || !firebase.auth().currentUser) return;
-  const uid = firebase.auth().currentUser.uid;
-  const db = firebase.firestore();
-  
-  try {
-    toast('🔄 Syncing with cloud...', 'info');
-    const querySnapshot = await db.collection('users').doc(uid).collection('data').get();
-    
-    if (querySnapshot.empty) {
-      toast('📤 Uploading local data to cloud...', 'info');
-      const keysToSync = [
-        'fxj_v3', 'fxj_adjustments', 'fxj_settings', 'fxj_v10_playbooks', 
-        'fxj_v10_goals', 'fxj_v10_daily_journal', 'fxj_v10_templates', 
-        'fxj_psychology', 'fxj_news', 'fxj_v11_accounts', 
-        'fxj_v11_active_account', 'fxj_v11_lockout_active', 
-        'fxj_v11_strict_mode', 'fxj_pairs', 'fxj_setups'
-      ];
-      const batch = db.batch();
-      let hasData = false;
-      keysToSync.forEach(key => {
-        const localVal = localStorage.getItem(key);
-        if (localVal) {
-          hasData = true;
-          const docRef = db.collection('users').doc(uid).collection('data').doc(key);
-          batch.set(docRef, {
-            value: JSON.parse(localVal),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-      });
-      if (hasData) {
-        await batch.commit();
-      }
-      toast('✅ Cloud sync complete!', 'success');
-    } else {
-      querySnapshot.forEach(doc => {
-        const key = doc.id;
-        const data = doc.data();
-        if (data && data.value !== undefined) {
-          localStorage.setItem(key, JSON.stringify(data.value));
-        }
-      });
-      toast('✅ Data loaded from cloud!', 'success');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-    }
-  } catch(err) {
-    console.error("Firebase load failed:", err);
-    toast('❌ Cloud sync failed!', 'error');
-  }
-}
 
 // Seed Learners Exness Live Account once on page load
 function seedLearnersExnessLive() {
@@ -7305,7 +6965,6 @@ function seedLearnersExnessLive() {
 seedLearnersExnessLive();
 
 // V11 Initializers
-initFirebase();
 renderAccountSelectors();
 checkDisciplineLockout();
 renderBackupCenter();
