@@ -4666,7 +4666,7 @@ function renderAccountSelectors(){
             Start: <strong>${c}${startBal.toFixed(0)}</strong> | Equity: <strong style="color:${currentBal >= startBal ? 'var(--green)' : 'var(--red)'}">${c}${currentBal.toFixed(0)}</strong>
           </span>
           <button class="btn-sm btn-edit" onclick="startEditAccount('${a}')" style="padding:2px 8px;font-size:10px;width:auto;display:inline-flex;align-items:center;gap:4px" title="Edit balances">✏️ Edit</button>
-          ${accounts.indexOf(a) >= 3 ? `<button class="rm-x" onclick="deleteCustomAccount('${a}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-weight:700;font-size:14px;padding:2px">×</button>` : ''}
+          <button class="rm-x" onclick="deleteCustomAccount('${a}')" title="Delete account profile">×</button>
         </div>
       </div>`;
     }).join('');
@@ -4733,7 +4733,10 @@ function addCustomAccount(){
 }
 
 function deleteCustomAccount(name){
-  if(accounts.indexOf(name) < 3) return;
+  if(accounts.length <= 1) {
+    toast('❌ Cannot delete the last remaining profile!', 'error');
+    return;
+  }
   if(!confirm(`Delete account profile "${name}" and all associated logs?`)) return;
   
   accounts = accounts.filter(a => a !== name);
