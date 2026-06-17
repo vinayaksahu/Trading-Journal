@@ -2003,7 +2003,22 @@ tbody tr:hover td{background:var(--bg-hover)}
 function $(id){return document.getElementById(id)}
 function $$(sel){return document.querySelectorAll(sel)}
 function safeGet(key,fb){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fb}catch(e){return fb}}
-function safeSet(key,val){try{localStorage.setItem(key,JSON.stringify(val));return true}catch(e){toast('⚠️ Storage full!','error');return false}}
+function safeSet(key,val){
+  try{
+    localStorage.setItem(key,JSON.stringify(val));
+    if (firebaseInitialized && firebase.auth().currentUser) {
+      const uid = firebase.auth().currentUser.uid;
+      firebase.firestore().collection('users').doc(uid).collection('data').doc(key).set({
+        value: val,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(err => console.error("Firebase sync error for " + key + ":", err));
+    }
+    return true;
+  }catch(e){
+    toast('⚠️ Storage full!','error');
+    return false;
+  }
+}
 function toast(msg,type='success'){const t=$('toast');t.textContent=msg;t.className='show '+type;clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
 function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function cleanText(raw){if(!raw)return'';return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2702}-\u{27B0}]|[\u{200D}]|[\u{FE0F}]|[\u{20E3}]|[\u{E0020}-\u{E007F}]|[\u{1F1E0}-\u{1F1FF}]|[▲▼✅❌⚖✓☰⚡️🔴🟡🟢]/gu,'').trim()}
@@ -2021,6 +2036,7 @@ let psyEntries=safeGet('fxj_psychology',[]);
 let newsEvents=safeGet('fxj_news',[]);
 let settings=safeGet('fxj_settings',{currency:'$',accType:'Live'});
 let editingIndex=-1;
+let firebaseInitialized = false;
 let currentScreenshot=null;
 let logSortKey='date';
 let logSortDir=-1;
@@ -6886,6 +6902,262 @@ renderTemplatesDropdown();
 renderDailyJournals();
 onSetupChanged();
 
+/* ═══════════════════════════════════════════════════════════
+   FIREBASE MULTI-USER SYNC ENGINE (Option A)
+   ═══════════════════════════════════════════════════════════ */
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+
+function initFirebase() {
+  let config = null;
+  const customConfigStr = localStorage.getItem('fxj_custom_firebase_config');
+  if (customConfigStr) {
+    try {
+      config = JSON.parse(customConfigStr);
+    } catch(e) {
+      console.error("Failed to parse custom Firebase config:", e);
+    }
+  }
+  
+  if (!config && DEFAULT_FIREBASE_CONFIG.apiKey) {
+    config = DEFAULT_FIREBASE_CONFIG;
+  }
+  
+  const statusEl = $('firebase-connection-status');
+  if (config && config.apiKey) {
+    try {
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(config);
+        }
+        firebaseInitialized = true;
+        
+        firebase.auth().onAuthStateChanged(user => {
+          updateCloudUI(user);
+        });
+        
+        if (statusEl) {
+          statusEl.innerHTML = '⚡ Connected to Firebase Project: <span class="green">' + config.projectId + '</span>';
+        }
+        const inputEl = $('firebase-config-input');
+        if (inputEl) {
+          inputEl.value = JSON.stringify(config, null, 2);
+        }
+      } else {
+        if (statusEl) statusEl.innerHTML = '❌ Firebase SDK script failed to load.';
+      }
+    } catch(e) {
+      console.error("Firebase init failed:", e);
+      if (statusEl) statusEl.innerHTML = '❌ Connection failed: ' + e.message;
+    }
+  } else {
+    if (statusEl) statusEl.innerHTML = 'ℹ️ Status: Local Offline Mode (No cloud database active)';
+  }
+}
+
+function saveCustomFirebaseConfig() {
+  const inputVal = $('firebase-config-input').value.trim();
+  if (!inputVal) {
+    localStorage.removeItem('fxj_custom_firebase_config');
+    toast('🗑️ Configuration cleared', 'info');
+    setTimeout(() => window.location.reload(), 800);
+    return;
+  }
+  
+  try {
+    const configObj = JSON.parse(inputVal);
+    if (!configObj.apiKey || !configObj.projectId) {
+      throw new Error("Missing apiKey or projectId");
+    }
+    localStorage.setItem('fxj_custom_firebase_config', JSON.stringify(configObj));
+    toast('💾 Config saved! Reloading...', 'success');
+    setTimeout(() => window.location.reload(), 1000);
+  } catch(e) {
+    toast('❌ Invalid JSON format or missing keys!', 'error');
+  }
+}
+
+let currentAuthForm = 'login';
+function toggleAuthForm(mode) {
+  currentAuthForm = mode;
+  const btnLogin = $('btn-show-login');
+  const btnSignup = $('btn-show-signup');
+  const btnSubmit = $('btn-auth-submit');
+  
+  if (mode === 'login') {
+    if (btnLogin) btnLogin.classList.add('active');
+    if (btnSignup) btnSignup.classList.remove('active');
+    if (btnSubmit) btnSubmit.textContent = '🚪 Sign In';
+  } else {
+    if (btnLogin) btnLogin.classList.remove('active');
+    if (btnSignup) btnSignup.classList.add('active');
+    if (btnSubmit) btnSubmit.textContent = '📝 Sign Up & Sync';
+  }
+  const msgEl = $('auth-message');
+  if (msgEl) msgEl.textContent = '';
+}
+
+async function handleAuthSubmit() {
+  if (!firebaseInitialized) {
+    toast('❌ Firebase is not initialized. Setup config first!', 'error');
+    return;
+  }
+  
+  const email = $('auth-email').value.trim();
+  const password = $('auth-password').value.trim();
+  const msgEl = $('auth-message');
+  
+  if (!email || !password) {
+    if (msgEl) msgEl.innerHTML = '<span class="red">Email and password are required.</span>';
+    return;
+  }
+  
+  if (msgEl) msgEl.innerHTML = '<span class="blue">Processing request...</span>';
+  
+  try {
+    if (currentAuthForm === 'login') {
+      await firebase.auth().signInWithEmailAndPassword(email, password);
+      toast('🚪 Signed in successfully!', 'success');
+    } else {
+      await firebase.auth().createUserWithEmailAndPassword(email, password);
+      toast('📝 Account created successfully!', 'success');
+    }
+    
+    $('auth-email').value = '';
+    $('auth-password').value = '';
+    
+    await syncFromFirebase();
+  } catch(err) {
+    console.error("Auth action failed:", err);
+    if (msgEl) msgEl.innerHTML = '<span class="red">Error: ' + err.message + '</span>';
+  }
+}
+
+async function firebaseSignOut() {
+  if (!firebaseInitialized) return;
+  if (!confirm('Log out? Your local browser copy will be cleared to protect privacy, but cloud data remains safe.')) {
+    return;
+  }
+  
+  try {
+    await firebase.auth().signOut();
+    const keysToClear = [
+      'fxj_v3', 'fxj_adjustments', 'fxj_settings', 'fxj_v10_playbooks', 
+      'fxj_v10_goals', 'fxj_v10_daily_journal', 'fxj_v10_templates', 
+      'fxj_psychology', 'fxj_news', 'fxj_v11_accounts', 
+      'fxj_v11_active_account', 'fxj_v11_lockout_active', 
+      'fxj_v11_strict_mode', 'fxj_pairs', 'fxj_setups'
+    ];
+    keysToClear.forEach(key => localStorage.removeItem(key));
+    toast('🚪 Signed out successfully', 'success');
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  } catch(err) {
+    console.error("Sign out failed:", err);
+    toast('❌ Sign out failed!', 'error');
+  }
+}
+
+function updateCloudUI(user) {
+  const profileView = $('auth-profile-view');
+  const loginView = $('auth-login-view');
+  
+  if (user) {
+    if (profileView) profileView.style.display = 'block';
+    if (loginView) loginView.style.display = 'none';
+    const emailDisp = $('user-email-display');
+    if (emailDisp) emailDisp.textContent = user.email;
+    
+    let userHeaderBadge = $('header-user-badge');
+    if (!userHeaderBadge) {
+      userHeaderBadge = document.createElement('span');
+      userHeaderBadge.id = 'header-user-badge';
+      userHeaderBadge.className = 'header-badge';
+      userHeaderBadge.style.background = 'rgba(59, 130, 246, 0.05)';
+      userHeaderBadge.style.color = 'var(--blue)';
+      userHeaderBadge.style.borderColor = 'rgba(59, 130, 246, 0.25)';
+      userHeaderBadge.style.cursor = 'pointer';
+      userHeaderBadge.onclick = () => switchTab('cloud');
+      const hr = document.querySelector('.header-right');
+      if (hr) {
+        const liveDateEl = hr.querySelector('#live-date');
+        if (liveDateEl) hr.insertBefore(userHeaderBadge, liveDateEl);
+        else hr.appendChild(userHeaderBadge);
+      }
+    }
+    userHeaderBadge.textContent = '👤 ' + user.email.split('@')[0];
+    userHeaderBadge.style.display = 'inline-block';
+  } else {
+    if (profileView) profileView.style.display = 'none';
+    if (loginView) loginView.style.display = 'block';
+    const userHeaderBadge = $('header-user-badge');
+    if (userHeaderBadge) {
+      userHeaderBadge.style.display = 'none';
+    }
+  }
+}
+
+async function syncFromFirebase() {
+  if (!firebaseInitialized || !firebase.auth().currentUser) return;
+  const uid = firebase.auth().currentUser.uid;
+  const db = firebase.firestore();
+  
+  try {
+    toast('🔄 Syncing with cloud...', 'info');
+    const querySnapshot = await db.collection('users').doc(uid).collection('data').get();
+    
+    if (querySnapshot.empty) {
+      toast('📤 Uploading local data to cloud...', 'info');
+      const keysToSync = [
+        'fxj_v3', 'fxj_adjustments', 'fxj_settings', 'fxj_v10_playbooks', 
+        'fxj_v10_goals', 'fxj_v10_daily_journal', 'fxj_v10_templates', 
+        'fxj_psychology', 'fxj_news', 'fxj_v11_accounts', 
+        'fxj_v11_active_account', 'fxj_v11_lockout_active', 
+        'fxj_v11_strict_mode', 'fxj_pairs', 'fxj_setups'
+      ];
+      const batch = db.batch();
+      let hasData = false;
+      keysToSync.forEach(key => {
+        const localVal = localStorage.getItem(key);
+        if (localVal) {
+          hasData = true;
+          const docRef = db.collection('users').doc(uid).collection('data').doc(key);
+          batch.set(docRef, {
+            value: JSON.parse(localVal),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      });
+      if (hasData) {
+        await batch.commit();
+      }
+      toast('✅ Cloud sync complete!', 'success');
+    } else {
+      querySnapshot.forEach(doc => {
+        const key = doc.id;
+        const data = doc.data();
+        if (data && data.value !== undefined) {
+          localStorage.setItem(key, JSON.stringify(data.value));
+        }
+      });
+      toast('✅ Data loaded from cloud!', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    }
+  } catch(err) {
+    console.error("Firebase load failed:", err);
+    toast('❌ Cloud sync failed!', 'error');
+  }
+}
+
 // Seed Learners Exness Live Account once on page load
 function seedLearnersExnessLive() {
   if (!accounts.includes('Learners Exness Live')) {
@@ -7033,6 +7305,7 @@ function seedLearnersExnessLive() {
 seedLearnersExnessLive();
 
 // V11 Initializers
+initFirebase();
 renderAccountSelectors();
 checkDisciplineLockout();
 renderBackupCenter();
