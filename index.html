@@ -6874,6 +6874,9 @@ function renderChallengeTracker() {
     let t1Val = '—';
     let t2Val = '—';
     let t3Val = '—';
+    let t4Val = '—';
+    let t5Val = '—';
+    let t6Val = '—';
     let dayPnlVal = 0;
     let withdrawalVal = 0;
     let statusLabel = '<span class="badge badge-secondary" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-secondary);padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700">⏳ PENDING</span>';
@@ -6888,10 +6891,16 @@ function renderChallengeTracker() {
       const p1 = dayTrades[0] ? dayTrades[0].pnl : null;
       const p2 = dayTrades[1] ? dayTrades[1].pnl : null;
       const p3 = dayTrades[2] ? dayTrades[2].pnl : null;
+      const p4 = dayTrades[3] ? dayTrades[3].pnl : null;
+      const p5 = dayTrades[4] ? dayTrades[4].pnl : null;
+      const p6 = dayTrades[5] ? dayTrades[5].pnl : null;
 
       if (p1 !== null) { t1Val = formatPnlCell(p1); totalTradesCount++; if (p1 > 0) winCount++; }
       if (p2 !== null) { t2Val = formatPnlCell(p2); totalTradesCount++; if (p2 > 0) winCount++; }
       if (p3 !== null) { t3Val = formatPnlCell(p3); totalTradesCount++; if (p3 > 0) winCount++; }
+      if (p4 !== null) { t4Val = formatPnlCell(p4); totalTradesCount++; if (p4 > 0) winCount++; }
+      if (p5 !== null) { t5Val = formatPnlCell(p5); totalTradesCount++; if (p5 > 0) winCount++; }
+      if (p6 !== null) { t6Val = formatPnlCell(p6); totalTradesCount++; if (p6 > 0) winCount++; }
       
       dayPnlVal = dayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       totalPnl += dayPnlVal;
@@ -6915,6 +6924,9 @@ function renderChallengeTracker() {
         <td style="text-align:right">${t1Val}</td>
         <td style="text-align:right">${t2Val}</td>
         <td style="text-align:right">${t3Val}</td>
+        <td style="text-align:right">${t4Val}</td>
+        <td style="text-align:right">${t5Val}</td>
+        <td style="text-align:right">${t6Val}</td>
         <td style="text-align:right;font-weight:700">${isPopulated ? formatPnlCell(dayPnlVal) : '—'}</td>
         <td style="text-align:right;font-weight:600">${c}${grossBal.toFixed(2)}</td>
         <td style="text-align:right;color:var(--red)">${withdrawalVal > 0 ? '-' + c + withdrawalVal.toFixed(2) : '—'}</td>
@@ -6966,6 +6978,9 @@ function renderChallengeTracker() {
               <th style="text-align:right">Trade 1</th>
               <th style="text-align:right">Trade 2</th>
               <th style="text-align:right">Trade 3</th>
+              <th style="text-align:right">Trade 4</th>
+              <th style="text-align:right">Trade 5</th>
+              <th style="text-align:right">Trade 6</th>
               <th style="text-align:right">Day P/L</th>
               <th style="text-align:right">Gross Bal</th>
               <th style="text-align:right">Withdrawal</th>
