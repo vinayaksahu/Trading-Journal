@@ -6841,14 +6841,24 @@ function renderChallengeTracker() {
   const c = getCur();
   const startBal = settings.startingBalances ? (settings.startingBalances[currentAccount] || 70) : 70;
   
-  // 1. Group active account trades by date
+  // 1. Group active account trades by date and find max trades in a single day
   const activeTrades = trades.filter(t => (t.account || 'Live') === currentAccount);
   const tradesByDate = {};
+  let maxDailyTrades = 0;
   activeTrades.forEach(t => {
     if (!t.date) return;
     if (!tradesByDate[t.date]) tradesByDate[t.date] = [];
     tradesByDate[t.date].push(t);
   });
+
+  Object.values(tradesByDate).forEach(dayList => {
+    if (dayList.length > maxDailyTrades) {
+      maxDailyTrades = dayList.length;
+    }
+  });
+
+  // Keep a baseline minimum of 4 columns, but expand if there are more
+  const numTradeCols = Math.max(4, maxDailyTrades);
 
   // Sort dates chronologically
   const sortedDates = Object.keys(tradesByDate).sort((a, b) => new Date(a) - new Date(b));
@@ -6871,36 +6881,31 @@ function renderChallengeTracker() {
     const weekLabel = `Week ${weekNum}`;
     
     let dateLabel = '—';
-    let t1Val = '—';
-    let t2Val = '—';
-    let t3Val = '—';
-    let t4Val = '—';
-    let t5Val = '—';
-    let t6Val = '—';
     let dayPnlVal = 0;
     let withdrawalVal = 0;
     let statusLabel = '<span class="badge badge-secondary" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-secondary);padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700">⏳ PENDING</span>';
     
+    let tradeCellsHtml = '';
     const isPopulated = i < sortedDates.length;
+    const dayTrades = isPopulated ? tradesByDate[sortedDates[i]] : [];
+    
+    // Dynamically generate cells for each trade column
+    for (let cIdx = 0; cIdx < numTradeCols; cIdx++) {
+      const t = dayTrades[cIdx];
+      if (t && t.pnl !== undefined) {
+        tradeCellsHtml += `<td style="text-align:right">${formatPnlCell(t.pnl)}</td>`;
+        if (isPopulated) {
+          totalTradesCount++;
+          if (t.pnl > 0) winCount++;
+        }
+      } else {
+        tradeCellsHtml += `<td style="text-align:right">—</td>`;
+      }
+    }
+
     if (isPopulated) {
       const dateStr = sortedDates[i];
       dateLabel = dateStr;
-      
-      const dayTrades = tradesByDate[dateStr];
-      // Sort day trades chronologically
-      const p1 = dayTrades[0] ? dayTrades[0].pnl : null;
-      const p2 = dayTrades[1] ? dayTrades[1].pnl : null;
-      const p3 = dayTrades[2] ? dayTrades[2].pnl : null;
-      const p4 = dayTrades[3] ? dayTrades[3].pnl : null;
-      const p5 = dayTrades[4] ? dayTrades[4].pnl : null;
-      const p6 = dayTrades[5] ? dayTrades[5].pnl : null;
-
-      if (p1 !== null) { t1Val = formatPnlCell(p1); totalTradesCount++; if (p1 > 0) winCount++; }
-      if (p2 !== null) { t2Val = formatPnlCell(p2); totalTradesCount++; if (p2 > 0) winCount++; }
-      if (p3 !== null) { t3Val = formatPnlCell(p3); totalTradesCount++; if (p3 > 0) winCount++; }
-      if (p4 !== null) { t4Val = formatPnlCell(p4); totalTradesCount++; if (p4 > 0) winCount++; }
-      if (p5 !== null) { t5Val = formatPnlCell(p5); totalTradesCount++; if (p5 > 0) winCount++; }
-      if (p6 !== null) { t6Val = formatPnlCell(p6); totalTradesCount++; if (p6 > 0) winCount++; }
       
       dayPnlVal = dayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       totalPnl += dayPnlVal;
@@ -6921,12 +6926,7 @@ function renderChallengeTracker() {
         <td style="font-weight:700;text-align:center">${dayNum}</td>
         <td>${dateLabel}</td>
         <td style="color:var(--text-secondary);font-weight:600">${weekLabel}</td>
-        <td style="text-align:right">${t1Val}</td>
-        <td style="text-align:right">${t2Val}</td>
-        <td style="text-align:right">${t3Val}</td>
-        <td style="text-align:right">${t4Val}</td>
-        <td style="text-align:right">${t5Val}</td>
-        <td style="text-align:right">${t6Val}</td>
+        ${tradeCellsHtml}
         <td style="text-align:right;font-weight:700">${isPopulated ? formatPnlCell(dayPnlVal) : '—'}</td>
         <td style="text-align:right;font-weight:600">${c}${grossBal.toFixed(2)}</td>
         <td style="text-align:right;color:var(--red)">${withdrawalVal > 0 ? '-' + c + withdrawalVal.toFixed(2) : '—'}</td>
@@ -6939,6 +6939,12 @@ function renderChallengeTracker() {
   // Calculate stats
   const winRate = totalTradesCount > 0 ? ((winCount / totalTradesCount) * 100) : 0;
   
+  // Dynamically build headers for trade columns
+  let tradeHeadersHtml = '';
+  for (let cIdx = 1; cIdx <= numTradeCols; cIdx++) {
+    tradeHeadersHtml += `<th style="text-align:right">Trade ${cIdx}</th>`;
+  }
+
   // Render layout
   container.innerHTML = `
     <div class="g4" style="margin-bottom:1.5rem">
@@ -6975,12 +6981,7 @@ function renderChallengeTracker() {
               <th style="width:65px;text-align:center">Day #</th>
               <th>Date</th>
               <th>Week</th>
-              <th style="text-align:right">Trade 1</th>
-              <th style="text-align:right">Trade 2</th>
-              <th style="text-align:right">Trade 3</th>
-              <th style="text-align:right">Trade 4</th>
-              <th style="text-align:right">Trade 5</th>
-              <th style="text-align:right">Trade 6</th>
+              ${tradeHeadersHtml}
               <th style="text-align:right">Day P/L</th>
               <th style="text-align:right">Gross Bal</th>
               <th style="text-align:right">Withdrawal</th>
