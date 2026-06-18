@@ -6863,6 +6863,12 @@ function renderChallengeTracker() {
   // Sort dates chronologically
   const sortedDates = Object.keys(tradesByDate).sort((a, b) => new Date(a) - new Date(b));
 
+  // Determine starting date of challenge
+  let challengeStartDate = '2026-06-15';
+  if (sortedDates.length > 0) {
+    challengeStartDate = sortedDates[0];
+  }
+
   // 2. Fetch withdrawals from adjustments
   const accAdjs = adjustments.filter(adj => (adj.account || 'Live') === currentAccount);
 
@@ -6871,64 +6877,116 @@ function renderChallengeTracker() {
   let winCount = 0;
   let totalTradesCount = 0;
 
-  // Generate 20-day grid by default, extend if there are more trading days
-  const totalGridDays = Math.max(20, sortedDates.length);
+  // Define calendar holidays to exclude (unless trades exist on that day)
+  const holidays = new Set(['2026-06-26', '2026-07-31']);
+
+  // Let's determine how many days we should render (at least 20, or active span + 10 business days buffer for next 2 weeks)
+  let daysSpan = 20;
+  if (sortedDates.length > 0) {
+    const lastDate = sortedDates[sortedDates.length - 1];
+    const diffMs = new Date(lastDate) - new Date(challengeStartDate);
+    const calendarDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Count business days in this span
+    let bizDaysCount = 0;
+    let tempD = new Date(challengeStartDate);
+    for (let d = 0; d < calendarDays; d++) {
+      const day = tempD.getDay();
+      const dateStr = tempD.toISOString().split('T')[0];
+      const isHoliday = holidays.has(dateStr) && (!tradesByDate[dateStr] || tradesByDate[dateStr].length === 0);
+      if (day !== 0 && day !== 6 && !isHoliday) {
+        bizDaysCount++;
+      }
+      tempD.setDate(tempD.getDate() + 1);
+    }
+    daysSpan = Math.max(20, bizDaysCount + 10);
+  }
+
+  // Helper to step business days (skipping Sat/Sun and holidays without trades)
+  function getNextBusinessDay(startStr, steps) {
+    let d = new Date(startStr);
+    let count = 0;
+    while (count < steps) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      const dateStr = d.toISOString().split('T')[0];
+      const isHoliday = holidays.has(dateStr) && (!tradesByDate[dateStr] || tradesByDate[dateStr].length === 0);
+      if (day !== 0 && day !== 6 && !isHoliday) {
+        count++;
+      }
+    }
+    return d.toISOString().split('T')[0];
+  }
+
+  // Build the business days list
+  const businessDaysList = [];
+  // Verify start date is not skipped if it has trades or is a business day
+  const startIsHoliday = holidays.has(challengeStartDate) && (!tradesByDate[challengeStartDate] || tradesByDate[challengeStartDate].length === 0);
+  if (new Date(challengeStartDate).getDay() !== 0 && new Date(challengeStartDate).getDay() !== 6 && !startIsHoliday) {
+    businessDaysList.push(challengeStartDate);
+  } else {
+    // If somehow start date is non-business/holiday, find first business day
+    businessDaysList.push(getNextBusinessDay(challengeStartDate, 1));
+  }
+
+  for (let dIdx = 1; dIdx < daysSpan; dIdx++) {
+    businessDaysList.push(getNextBusinessDay(challengeStartDate, dIdx));
+  }
+
   const rowsHtml = [];
 
-  for (let i = 0; i < totalGridDays; i++) {
-    const dayNum = i + 1;
-    let weekLabel = `Week ${3 + Math.floor(i / 5)}`;
+  businessDaysList.forEach((rowDateStr, index) => {
+    const dayNum = index + 1;
     
-    let dateLabel = '—';
+    // Calculate calendar week of month dynamically
+    const dObj = new Date(rowDateStr);
+    const monthLabel = dObj.toLocaleString('en-US', { month: 'short' });
+    
+    const dayOfMonth = dObj.getDate();
+    const firstDay = new Date(dObj.getFullYear(), dObj.getMonth(), 1).getDay();
+    const adjustedDate = dayOfMonth + (firstDay === 0 ? 6 : firstDay - 1);
+    const weekNum = Math.ceil(adjustedDate / 7);
+    const weekLabel = `${monthLabel} W${weekNum}`;
+
     let dayPnlVal = 0;
     let withdrawalVal = 0;
     let statusLabel = '<span class="badge badge-secondary" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-secondary);padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700">⏳ PENDING</span>';
     
     let tradeCellsHtml = '';
-    const isPopulated = i < sortedDates.length;
-    const dayTrades = isPopulated ? tradesByDate[sortedDates[i]] : [];
+    const dayTrades = tradesByDate[rowDateStr] || [];
+    const isPopulated = dayTrades.length > 0;
     
     // Dynamically generate cells for each trade column
     for (let cIdx = 0; cIdx < numTradeCols; cIdx++) {
       const t = dayTrades[cIdx];
       if (t && t.pnl !== undefined) {
         tradeCellsHtml += `<td style="text-align:right">${formatPnlCell(t.pnl)}</td>`;
-        if (isPopulated) {
-          totalTradesCount++;
-          if (t.pnl > 0) winCount++;
-        }
+        totalTradesCount++;
+        if (t.pnl > 0) winCount++;
       } else {
         tradeCellsHtml += `<td style="text-align:right">—</td>`;
       }
     }
 
     if (isPopulated) {
-      const dateStr = sortedDates[i];
-      dateLabel = dateStr;
-      
-      const dParts = dateStr.split('-');
-      if (dParts.length === 3) {
-        weekLabel = `Week ${Math.ceil(parseInt(dParts[2], 10) / 7)}`;
-      }
-      
       dayPnlVal = dayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       totalPnl += dayPnlVal;
 
       // Find withdrawals on this date
-      const dayWithdrawals = accAdjs.filter(adj => adj.date === dateStr && adj.type === 'Withdrawal');
+      const dayWithdrawals = accAdjs.filter(adj => adj.date === rowDateStr && adj.type === 'Withdrawal');
       withdrawalVal = dayWithdrawals.reduce((sum, adj) => sum + (adj.amount || 0), 0);
 
       statusLabel = '<span class="badge badge-success" style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:var(--green);padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700">✅ COMPLETE</span>';
     }
 
-    const grossBal = runningBalance + (isPopulated ? dayPnlVal : 0);
+    const grossBal = runningBalance + dayPnlVal;
     const netBal = grossBal - withdrawalVal;
     runningBalance = netBal;
 
     rowsHtml.push(`
       <tr>
         <td style="font-weight:700;text-align:center">${dayNum}</td>
-        <td>${dateLabel}</td>
+        <td style="font-family:'JetBrains Mono',monospace">${rowDateStr}</td>
         <td style="color:var(--text-secondary);font-weight:600">${weekLabel}</td>
         ${tradeCellsHtml}
         <td style="text-align:right;font-weight:700">${isPopulated ? formatPnlCell(dayPnlVal) : '—'}</td>
@@ -6938,7 +6996,7 @@ function renderChallengeTracker() {
         <td style="text-align:center">${statusLabel}</td>
       </tr>
     `);
-  }
+  });
 
   // Calculate stats
   const winRate = totalTradesCount > 0 ? ((winCount / totalTradesCount) * 100) : 0;
