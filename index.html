@@ -6877,8 +6877,7 @@ function renderChallengeTracker() {
 
   for (let i = 0; i < totalGridDays; i++) {
     const dayNum = i + 1;
-    const weekNum = Math.ceil(dayNum / 5);
-    const weekLabel = `Week ${weekNum}`;
+    let weekLabel = `Week ${3 + Math.floor(i / 5)}`;
     
     let dateLabel = '—';
     let dayPnlVal = 0;
@@ -6906,6 +6905,11 @@ function renderChallengeTracker() {
     if (isPopulated) {
       const dateStr = sortedDates[i];
       dateLabel = dateStr;
+      
+      const dParts = dateStr.split('-');
+      if (dParts.length === 3) {
+        weekLabel = `Week ${Math.ceil(parseInt(dParts[2], 10) / 7)}`;
+      }
       
       dayPnlVal = dayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       totalPnl += dayPnlVal;
