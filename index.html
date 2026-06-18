@@ -1318,7 +1318,19 @@ tbody tr:hover td{background:var(--bg-hover)}
 
 <!-- ══════════ CHALLENGE TRACKER ══════════ -->
 <div class="section" id="tab-challenge">
-  <div class="section-title"><span class="st-icon">📈</span>Challenge Log</div>
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div><span class="st-icon">📈</span>Challenge Log</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;font-weight:700;color:var(--text-secondary)">Simulation Mode:</span>
+      <select id="challenge-scenario-select" onchange="renderChallengeTracker()" style="padding:6px 12px;font-size:12px;border-radius:6px;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;outline:none;font-weight:700">
+        <option value="actual">📊 Actual Trades</option>
+        <option value="worst">🔴 Worst Case Scenario (Growth $70 ➔ $118)</option>
+        <option value="average">🟡 Average Scenario (Growth $70 ➔ $214)</option>
+        <option value="good">🟢 Good Scenario (Growth $70 ➔ $274)</option>
+        <option value="best">🔵 Best Case Scenario (Growth $70 ➔ $310)</option>
+      </select>
+    </div>
+  </div>
   <div id="challenge-tracker-content"></div>
 </div>
 
@@ -4694,6 +4706,9 @@ function switchAccount(val){
   const sel = $('header-account-select');
   if(sel) sel.value = val;
   
+  const scenarioSelect = $('challenge-scenario-select');
+  if(scenarioSelect) scenarioSelect.value = 'actual';
+  
   syncBalanceField();
   
   renderLog();
@@ -6839,18 +6854,109 @@ function renderChallengeTracker() {
   if (!container) return;
 
   const c = getCur();
-  const startBal = settings.startingBalances ? (settings.startingBalances[currentAccount] || 70) : 70;
   
-  // 1. Group active account trades by date and find max trades in a single day
-  const activeTrades = trades.filter(t => (t.account || 'Live') === currentAccount);
-  const tradesByDate = {};
-  let maxDailyTrades = 0;
-  activeTrades.forEach(t => {
-    if (!t.date) return;
-    if (!tradesByDate[t.date]) tradesByDate[t.date] = [];
-    tradesByDate[t.date].push(t);
-  });
+  // Read selected simulation scenario
+  const scenarioSelect = $('challenge-scenario-select');
+  const scenario = scenarioSelect ? scenarioSelect.value : 'actual';
 
+  // Define calendar holidays to exclude (unless trades exist on that day)
+  const holidays = new Set(['2026-06-26', '2026-07-31']);
+
+  // Predefined scenario data matching user rules:
+  // Lot = 0.01, Risk = $3, Reward = $9, Daily DD = $10, LL Rule = Stop after 2 losses, WW/WL/LW = 3rd trade allowed
+  const scenarioData = {
+    worst: [
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, 9, -3], [9, -3, -3], // Week 1 (5 W, 9 L, P/L: +18)
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, -3, -3], [-3, 9, -3], // Week 2 (4 W, 10 L, P/L: +6)
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, 9, -3], [9, -3, -3], // Week 3 (5 W, 9 L, P/L: +18)
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, -3, -3], [-3, 9, -3]  // Week 4 (4 W, 10 L, P/L: +6)
+    ],
+    average: [
+      [-3, -3], [9, -3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], // Week 1 (7 W, 7 L, P/L: +42)
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, 9, -3], [9, -3, 9], // Week 2 (6 W, 8 L, P/L: +30)
+      [-3, -3], [9, -3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], // Week 3 (7 W, 7 L, P/L: +42)
+      [-3, -3], [9, -3, -3], [-3, 9, -3], [9, 9, -3], [9, -3, 9]  // Week 4 (6 W, 8 L, P/L: +30)
+    ],
+    good: [
+      [-3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], [9, 9, -3], // Week 1 (8 W, 6 L, P/L: +54)
+      [-3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], [9, 9, -3], // Week 2 (8 W, 6 L, P/L: +54)
+      [-3, -3], [9, -3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], // Week 3 (7 W, 7 L, P/L: +42)
+      [-3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], [9, 9, -3]  // Week 4 (8 W, 6 L, P/L: +54)
+    ],
+    best: [
+      [-3, -3], [9, -3, -3], [9, 9, -3], [9, 9, 9], [9, 9, 9], // Week 1 (9 W, 5 L, P/L: +66)
+      [-3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], [9, 9, -3], // Week 2 (8 W, 6 L, P/L: +54)
+      [-3, -3], [9, -3, -3], [9, 9, -3], [9, 9, 9], [9, 9, 9], // Week 3 (9 W, 5 L, P/L: +66)
+      [-3, -3], [9, 9, -3], [9, -3, 9], [-3, 9, 9], [9, 9, -3]  // Week 4 (8 W, 6 L, P/L: +54)
+    ]
+  };
+
+  // Helper to step business days (skipping Sat/Sun and holidays without trades)
+  function getNextBusinessDay(startStr, steps, tempTradesByDate) {
+    let d = new Date(startStr);
+    let count = 0;
+    while (count < steps) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      const dateStr = d.toISOString().split('T')[0];
+      const isHoliday = holidays.has(dateStr) && (!tempTradesByDate[dateStr] || tempTradesByDate[dateStr].length === 0);
+      if (day !== 0 && day !== 6 && !isHoliday) {
+        count++;
+      }
+    }
+    return d.toISOString().split('T')[0];
+  }
+
+  let startBal = 70;
+  let tradesByDate = {};
+  let sortedDates = [];
+  let challengeStartDate = '2026-06-15';
+  let accAdjs = [];
+
+  if (scenario === 'actual') {
+    startBal = settings.startingBalances ? (settings.startingBalances[currentAccount] || 70) : 70;
+    const activeTrades = trades.filter(t => (t.account || 'Live') === currentAccount);
+    accAdjs = adjustments.filter(adj => (adj.account || 'Live') === currentAccount);
+    
+    activeTrades.forEach(t => {
+      if (!t.date) return;
+      if (!tradesByDate[t.date]) tradesByDate[t.date] = [];
+      tradesByDate[t.date].push(t);
+    });
+    sortedDates = Object.keys(tradesByDate).sort((a, b) => new Date(a) - new Date(b));
+    if (sortedDates.length > 0) {
+      challengeStartDate = sortedDates[0];
+    }
+  } else {
+    // Generate simulated trade data
+    startBal = 70;
+    accAdjs = []; // No adjustments for simulation scenarios
+    
+    // We compute the business days first with the empty tradesByDate to skip holidays
+    const simDays = 20;
+    const tempList = [];
+    tempList.push(challengeStartDate);
+    for (let dIdx = 1; dIdx < simDays; dIdx++) {
+      tempList.push(getNextBusinessDay(challengeStartDate, dIdx, {}));
+    }
+    
+    const pnlList = scenarioData[scenario];
+    tempList.forEach((rowDateStr, idx) => {
+      const dailyPnls = pnlList[idx] || [];
+      tradesByDate[rowDateStr] = dailyPnls.map((pnlVal, tIdx) => ({
+        id: `sim-${idx}-${tIdx}`,
+        date: rowDateStr,
+        pnl: pnlVal,
+        pair: 'XAUUSD',
+        lotSize: 0.01,
+        result: pnlVal > 0 ? '✅ Win' : '❌ Loss'
+      }));
+    });
+    sortedDates = tempList;
+  }
+
+  // 1. Find max trades in a single day
+  let maxDailyTrades = 0;
   Object.values(tradesByDate).forEach(dayList => {
     if (dayList.length > maxDailyTrades) {
       maxDailyTrades = dayList.length;
@@ -6860,77 +6966,53 @@ function renderChallengeTracker() {
   // Keep a baseline minimum of 4 columns, but expand if there are more
   const numTradeCols = Math.max(4, maxDailyTrades);
 
-  // Sort dates chronologically
-  const sortedDates = Object.keys(tradesByDate).sort((a, b) => new Date(a) - new Date(b));
-
-  // Determine starting date of challenge
-  let challengeStartDate = '2026-06-15';
-  if (sortedDates.length > 0) {
-    challengeStartDate = sortedDates[0];
-  }
-
-  // 2. Fetch withdrawals from adjustments
-  const accAdjs = adjustments.filter(adj => (adj.account || 'Live') === currentAccount);
-
   let runningBalance = startBal;
   let totalPnl = 0;
   let winCount = 0;
   let totalTradesCount = 0;
 
-  // Define calendar holidays to exclude (unless trades exist on that day)
-  const holidays = new Set(['2026-06-26', '2026-07-31']);
-
   // Let's determine how many days we should render (at least 20, or active span + 10 business days buffer for next 2 weeks)
   let daysSpan = 20;
-  if (sortedDates.length > 0) {
-    const lastDate = sortedDates[sortedDates.length - 1];
-    const diffMs = new Date(lastDate) - new Date(challengeStartDate);
-    const calendarDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
-    
-    // Count business days in this span
-    let bizDaysCount = 0;
-    let tempD = new Date(challengeStartDate);
-    for (let d = 0; d < calendarDays; d++) {
-      const day = tempD.getDay();
-      const dateStr = tempD.toISOString().split('T')[0];
-      const isHoliday = holidays.has(dateStr) && (!tradesByDate[dateStr] || tradesByDate[dateStr].length === 0);
-      if (day !== 0 && day !== 6 && !isHoliday) {
-        bizDaysCount++;
+  if (scenario === 'actual') {
+    if (sortedDates.length > 0) {
+      const lastDate = sortedDates[sortedDates.length - 1];
+      const diffMs = new Date(lastDate) - new Date(challengeStartDate);
+      const calendarDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+      
+      // Count business days in this span
+      let bizDaysCount = 0;
+      let tempD = new Date(challengeStartDate);
+      for (let d = 0; d < calendarDays; d++) {
+        const day = tempD.getDay();
+        const dateStr = tempD.toISOString().split('T')[0];
+        const isHoliday = holidays.has(dateStr) && (!tradesByDate[dateStr] || tradesByDate[dateStr].length === 0);
+        if (day !== 0 && day !== 6 && !isHoliday) {
+          bizDaysCount++;
+        }
+        tempD.setDate(tempD.getDate() + 1);
       }
-      tempD.setDate(tempD.getDate() + 1);
+      daysSpan = Math.max(20, bizDaysCount + 10);
     }
-    daysSpan = Math.max(20, bizDaysCount + 10);
-  }
-
-  // Helper to step business days (skipping Sat/Sun and holidays without trades)
-  function getNextBusinessDay(startStr, steps) {
-    let d = new Date(startStr);
-    let count = 0;
-    while (count < steps) {
-      d.setDate(d.getDate() + 1);
-      const day = d.getDay();
-      const dateStr = d.toISOString().split('T')[0];
-      const isHoliday = holidays.has(dateStr) && (!tradesByDate[dateStr] || tradesByDate[dateStr].length === 0);
-      if (day !== 0 && day !== 6 && !isHoliday) {
-        count++;
-      }
-    }
-    return d.toISOString().split('T')[0];
+  } else {
+    daysSpan = 20; // Simulated scenarios are always exactly 20 business days
   }
 
   // Build the business days list
   const businessDaysList = [];
-  // Verify start date is not skipped if it has trades or is a business day
-  const startIsHoliday = holidays.has(challengeStartDate) && (!tradesByDate[challengeStartDate] || tradesByDate[challengeStartDate].length === 0);
-  if (new Date(challengeStartDate).getDay() !== 0 && new Date(challengeStartDate).getDay() !== 6 && !startIsHoliday) {
-    businessDaysList.push(challengeStartDate);
-  } else {
-    // If somehow start date is non-business/holiday, find first business day
-    businessDaysList.push(getNextBusinessDay(challengeStartDate, 1));
-  }
+  if (scenario === 'actual') {
+    // Verify start date is not skipped if it has trades or is a business day
+    const startIsHoliday = holidays.has(challengeStartDate) && (!tradesByDate[challengeStartDate] || tradesByDate[challengeStartDate].length === 0);
+    if (new Date(challengeStartDate).getDay() !== 0 && new Date(challengeStartDate).getDay() !== 6 && !startIsHoliday) {
+      businessDaysList.push(challengeStartDate);
+    } else {
+      businessDaysList.push(getNextBusinessDay(challengeStartDate, 1, tradesByDate));
+    }
 
-  for (let dIdx = 1; dIdx < daysSpan; dIdx++) {
-    businessDaysList.push(getNextBusinessDay(challengeStartDate, dIdx));
+    for (let dIdx = 1; dIdx < daysSpan; dIdx++) {
+      businessDaysList.push(getNextBusinessDay(challengeStartDate, dIdx, tradesByDate));
+    }
+  } else {
+    businessDaysList.push(...sortedDates);
   }
 
   const rowsHtml = [];
@@ -7007,13 +7089,16 @@ function renderChallengeTracker() {
     tradeHeadersHtml += `<th style="text-align:right">Trade ${cIdx}</th>`;
   }
 
+  const displayAccountName = scenario === 'actual' ? currentAccount : (scenario === 'worst' ? 'Worst Case Simulation' : (scenario === 'average' ? 'Average Simulation' : (scenario === 'good' ? 'Good Simulation' : 'Best Case Simulation')));
+  const displayAccountLabel = scenario === 'actual' ? 'Simulation Active' : 'Model Scenario';
+
   // Render layout
   container.innerHTML = `
     <div class="g4" style="margin-bottom:1.5rem">
       <div class="card">
         <div class="card-title"><span class="ct-icon">🛡️</span>Challenge Account</div>
-        <div class="metric-value blue" style="font-size:20px;margin-bottom:4px">${currentAccount}</div>
-        <span class="badge badge-success" style="font-size:9.5px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);color:var(--blue);padding:2px 8px;border-radius:12px;font-weight:700">Simulation Active</span>
+        <div class="metric-value blue" style="font-size:20px;margin-bottom:4px">${displayAccountName}</div>
+        <span class="badge badge-success" style="font-size:9.5px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);color:var(--blue);padding:2px 8px;border-radius:12px;font-weight:700">${displayAccountLabel}</span>
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">💵</span>Starting Balance</div>
